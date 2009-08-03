@@ -12,6 +12,9 @@ test : twittering-mode.el
 	$(EMACS21) -q -l local.test-emacs21.el &
 	$(EMACS22) -q -l local.test-emacs22.el &
 
+install : twittering-mode.el
+	cp twittering-mode.el ~/.emacs.d/site-lisp/
+
 clean : 
 	rm twittering-mode.elc
 
