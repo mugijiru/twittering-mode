@@ -505,12 +505,18 @@ directory. You should change through function'twittering-icon-mode'")
       (error
        (message "Failure: HTTP GET") nil))))
 
+(defun twittering-is-valid-http-header (header)
+  "if valid http header, return true"
+  (if (string-match "HTTP/1\.[01] \\([a-z0-9 ]+\\)\r?\n" header)
+      t
+    nil))
+
 (defun twittering-http-get-default-sentinel (proc stat &optional suc-msg)
   (let ((header (twittering-get-response-header))
 	(body (twittering-get-response-body))
 	(status nil)
 	)
-    (if (string-match "HTTP/1\.[01] \\([a-z0-9 ]+\\)\r?\n" header)
+    (if (twittering-is-valid-http-header header)
 	(progn
 	  (setq status (match-string-no-properties 1 header))
 	  (case-string
