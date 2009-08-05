@@ -451,6 +451,27 @@ directory. You should change through function'twittering-icon-mode'")
 	   "&"))  
 )
 
+(defun twittering-create-post-request (method-class method &optional parameters)
+  "create post request text"
+  (let ((nl "\r\n"))
+    (concat "POST http://twitter.com/" method-class "/" method ".xml"
+	    (when parameters
+	      (twittering-get-request-parameters parameters))
+	    " HTTP/1.1" nl
+	    "Host: twitter.com" nl
+	    "User-Agent: " (twittering-user-agent) nl
+	    "Authorization: Basic " (base64-encode-string (concat twittering-username ":" (twittering-get-password))) nl
+
+	    ; POST
+	    "Content-Type: text/plain" nl
+	    "Content-Length: 0" nl
+	    (when twittering-proxy-use
+	      "Proxy-Connection: Keep-Alive" nl
+	      (when (and proxy-user proxy-password)
+		(concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
+	    nl)))
+
+
 (defun twittering-create-get-request (method-class method &optional parameters)
   (let ((nl "\r\n"))
     (concat "GET http://twitter.com/" method-class "/" method ".xml"
@@ -460,6 +481,8 @@ directory. You should change through function'twittering-icon-mode'")
 	    "Host: twitter.com" nl
 	    "User-Agent: " (twittering-user-agent) nl
 	    "Authorization: Basic " (base64-encode-string (concat twittering-username ":" (twittering-get-password))) nl
+
+	    ; GET
 	    "Accept: text/xml" ",application/xml" ",application/xhtml+xml" ",application/html;q=0.9" ",text/plain;q=0.8" ",image/png,*/*;q=0.5" nl
 	    "Accept-Charset: utf-8;q=0.7,*;q=0.7" nl
 	    (when twittering-proxy-use
@@ -467,6 +490,8 @@ directory. You should change through function'twittering-icon-mode'")
 	      (when (and proxy-user proxy-password)
 		(concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
 	    nl)))
+
+
 
 
 
@@ -709,63 +734,28 @@ METHOD-CLASS must be one of Twitter API method classes
 METHOD must be one of Twitter API method which belongs to METHOD-CLASS.
 PARAMETERS is alist of URI parameters.
  ex) ((\"mode\" . \"view\") (\"page\" . \"6\")) => <URI>?mode=view&page=6"
-  (if (null sentinel) (setq sentinel 'twittering-http-post-default-sentinel))
+  (if (null sentinel)
+      (setq sentinel 'twittering-http-post-default-sentinel))
 
   ;; clear the buffer
-  (save-excursion
-    (set-buffer (twittering-http-buffer))
-    (erase-buffer))
+  (twittering-clear-buffer)
 
   (let (proc server port
 	     (proxy-user twittering-proxy-user)
 	     (proxy-password twittering-proxy-password))
     (progn
-      (if (and twittering-proxy-use twittering-proxy-server)
-	  (setq server twittering-proxy-server
-		port (if (integerp twittering-proxy-port)
-			 (int-to-string twittering-proxy-port)
-		       twittering-proxy-port))
-	(setq server "twitter.com"
-	      port "80"))
+      (setq server (twittering-set-server)
+	    port (twittering-set-port))
+
       (setq proc
-	    (open-network-stream
-	     "network-connection-process" (twittering-http-buffer)
-	     server (string-to-number port)))
+	    (twittering-setup-network server port))
+
       (set-process-sentinel proc sentinel)
       (process-send-string
        proc
-       (let ((nl "\r\n")
-	     request)
-	 (setq  request
-		(concat "POST http://twitter.com/" method-class "/" method ".xml"
-			(when parameters
-			  (concat "?"
-				  (mapconcat
-				   (lambda (param-pair)
-				     (format "%s=%s"
-					     (twittering-percent-encode (car param-pair))
-					     (twittering-percent-encode (cdr param-pair))))
-				   parameters
-				   "&")))
-			" HTTP/1.1" nl
-			"Host: twitter.com" nl
-			"User-Agent: " (twittering-user-agent) nl
-			"Authorization: Basic "
-			(base64-encode-string
-			 (concat twittering-username ":" (twittering-get-password)))
-			nl
-			"Content-Type: text/plain" nl
-			"Content-Length: 0" nl
-			(when twittering-proxy-use
-			  "Proxy-Connection: Keep-Alive" nl
-			  (when (and proxy-user proxy-password)
-			    (concat
-			     "Proxy-Authorization: Basic "
-			     (base64-encode-string
-			      (concat proxy-user ":"
-				      proxy-password))
-			     nl)))
-			nl))
+       (let (request)
+	 (setq request
+	       (twittering-create-post-request method-class method parameters))
 	 (debug-print (concat "POST Request\n" request))
 	 request)))))
 
