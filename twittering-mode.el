@@ -451,10 +451,10 @@ directory. You should change through function'twittering-icon-mode'")
 	   "&"))  
 )
 
-(defun twittering-create-post-request (method-class method &optional parameters)
-  "create post request text"
+(defun twittering-create-request (http-method method-class method &optional parameters)
+  "create http request, http-method is (GET|POST)"
   (let ((nl "\r\n"))
-    (concat "POST http://twitter.com/" method-class "/" method ".xml"
+    (concat http-method " http://twitter.com/" method-class "/" method ".xml"
 	    (when parameters
 	      (twittering-get-request-parameters parameters))
 	    " HTTP/1.1" nl
@@ -462,37 +462,27 @@ directory. You should change through function'twittering-icon-mode'")
 	    "User-Agent: " (twittering-user-agent) nl
 	    "Authorization: Basic " (base64-encode-string (concat twittering-username ":" (twittering-get-password))) nl
 
-	    ; POST
-	    "Content-Type: text/plain" nl
-	    "Content-Length: 0" nl
-	    (when twittering-proxy-use
-	      "Proxy-Connection: Keep-Alive" nl
-	      (when (and proxy-user proxy-password)
-		(concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
-	    nl)))
 
-
-(defun twittering-create-get-request (method-class method &optional parameters)
-  (let ((nl "\r\n"))
-    (concat "GET http://twitter.com/" method-class "/" method ".xml"
-	    (when parameters
-	      (twittering-get-request-parameters parameters))
-	    " HTTP/1.1" nl
-	    "Host: twitter.com" nl
-	    "User-Agent: " (twittering-user-agent) nl
-	    "Authorization: Basic " (base64-encode-string (concat twittering-username ":" (twittering-get-password))) nl
-
-	    ; GET
-	    "Accept: text/xml" ",application/xml" ",application/xhtml+xml" ",application/html;q=0.9" ",text/plain;q=0.8" ",image/png,*/*;q=0.5" nl
-	    "Accept-Charset: utf-8;q=0.7,*;q=0.7" nl
-	    (when twittering-proxy-use
-	      "Proxy-Connection: Keep-Alive" nl
-	      (when (and proxy-user proxy-password)
-		(concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
-	    nl)))
-
-
-
+	    ; if "POST" elsif "GET" elsif "DELETE"...
+	    (if (string= http-method "POST")
+		(progn
+		  "Content-Type: text/plain" nl
+		  "Content-Length: 0" nl
+		  (when twittering-proxy-use
+		    "Proxy-Connection: Keep-Alive" nl
+		    (when (and proxy-user proxy-password)
+		      (concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
+		  nl))
+	    
+	    (if (string= http-method "GET")
+		(progn
+		  "Accept: text/xml" ",application/xml" ",application/xhtml+xml" ",application/html;q=0.9" ",text/plain;q=0.8" ",image/png,*/*;q=0.5" nl
+		  "Accept-Charset: utf-8;q=0.7,*;q=0.7" nl
+		  (when twittering-proxy-use
+		    "Proxy-Connection: Keep-Alive" nl
+		    (when (and proxy-user proxy-password)
+		      (concat "Proxy-Authorization: Basic " (base64-encode-string (concat proxy-user ":" proxy-password)) nl)))
+		  nl)))))
 
 
 (defun twittering-http-get (method-class method &optional parameters sentinel)
@@ -524,7 +514,8 @@ directory. You should change through function'twittering-icon-mode'")
 	   (let (request)
 	     (progn
 	       (setq request
-		     (twittering-create-get-request method-class method))
+		     (twittering-create-request "GET" method-class method))
+;		     (twittering-create-get-request method-class method))
 	       (debug-print (concat "GET Request\n" request))
 	       request))))
       (error
@@ -755,7 +746,8 @@ PARAMETERS is alist of URI parameters.
        proc
        (let (request)
 	 (setq request
-	       (twittering-create-post-request method-class method parameters))
+	       (twittering-create-request "POST" method-class method parameters))
+;	       (twittering-create-post-request method-class method parameters))
 	 (debug-print (concat "POST Request\n" request))
 	 request)))))
 
