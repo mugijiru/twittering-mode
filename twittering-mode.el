@@ -527,9 +527,29 @@ directory. You should change through function'twittering-icon-mode'")
       t
     nil))
 
+(defun twittering-http-post-default-sentinel (proc stat &optional suc-msg)
+
+  (condition-case err-signal
+      (let ((header (twittering-get-response-header))
+	    ;; (body (twittering-get-response-body)) not used now.
+	    (status nil))
+	(string-match "HTTP/1\.1 \\([a-z0-9 ]+\\)\r?\n" header)
+	(setq status (match-string-no-properties 1 header))
+	(case-string status
+		     (("200 OK")
+		      (message (if suc-msg suc-msg "Success: Post")))
+		     (t (message status)))
+	)
+    (error (message (prin1-to-string err-signal))))
+  )
+
+
 (defun twittering-http-get-default-sentinel (proc stat &optional suc-msg)
-  (let ((header (twittering-get-response-header))
-	(body (twittering-get-response-body))
+;  (let ((header (twittering-get-response-header))
+;	(body (twittering-get-response-body))
+  (let ((header (twittering-get-response "head"))
+	(body (twittering-get-response "body"))
+
 	(status nil)
 	)
     (if (twittering-is-valid-http-header header)
@@ -747,27 +767,11 @@ PARAMETERS is alist of URI parameters.
        (let (request)
 	 (setq request
 	       (twittering-create-request "POST" method-class method parameters))
-;	       (twittering-create-post-request method-class method parameters))
 	 (debug-print (concat "POST Request\n" request))
 	 request)))))
 
-(defun twittering-http-post-default-sentinel (proc stat &optional suc-msg)
 
-  (condition-case err-signal
-      (let ((header (twittering-get-response-header))
-	    ;; (body (twittering-get-response-body)) not used now.
-	    (status nil))
-	(string-match "HTTP/1\.1 \\([a-z0-9 ]+\\)\r?\n" header)
-	(setq status (match-string-no-properties 1 header))
-	(case-string status
-		     (("200 OK")
-		      (message (if suc-msg suc-msg "Success: Post")))
-		     (t (message status)))
-	)
-    (error (message (prin1-to-string err-signal))))
-  )
-
-(defun twittering-get-response-header (&optional buffer)
+(defun twittering-get-response (type &optional buffer)
   "Exract HTTP response header from HTTP response.
 `buffer' may be a buffer or the name of an existing buffer.
  If `buffer' is omitted, the value of `twittering-http-buffer' is used as `buffer'."
@@ -776,22 +780,21 @@ PARAMETERS is alist of URI parameters.
   (save-excursion
     (set-buffer buffer)
     (let ((content (buffer-string)))
-      (substring content 0 (string-match "\r?\n\r?\n" content)))))
-
-(defun twittering-get-response-body (&optional buffer)
-  "Exract HTTP response body from HTTP response, parse it as XML, and return a
-XML tree as list. `buffer' may be a buffer or the name of an existing buffer. If
-`buffer' is omitted, the value of `twittering-http-buffer' is used as `buffer'."
-  (if (stringp buffer) (setq buffer (get-buffer buffer)))
-  (if (null buffer) (setq buffer (twittering-http-buffer)))
-  (save-excursion
-    (set-buffer buffer)
-    (let ((content (buffer-string)))
-      (let ((content (buffer-string)))
+      (if (equal type "head")
+	  (substring content 0 (string-match "\r?\n\r?\n" content))
 	(xml-parse-region (+ (string-match "\r?\n\r?\n" content)
 			     (length (match-string 0 content)))
-			  (point-max)))
-      )))
+			  (point-max))))))
+
+(defun twittering-data-var-is-null-or-cannot-find-id (data-var id)
+  (if (or (null (symbol-value data-var))
+	  (not (find-if
+		(lambda (item)
+		  (string= id (cdr (assq 'id item))))
+		(symbol-value data-var))))
+      t
+    nil))
+
 
 (defun twittering-cache-status-datum (status-datum &optional data-var)
   "Cache status datum into data-var(default twittering-timeline-data)
@@ -799,11 +802,8 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (if (null data-var)
       (setf data-var 'twittering-timeline-data))
   (let ((id (cdr (assq 'id status-datum))))
-    (if (or (null (symbol-value data-var))
-	    (not (find-if
-		  (lambda (item)
-		    (string= id (cdr (assq 'id item))))
-		  (symbol-value data-var))))
+
+    (if (twittering-data-var-is-null-or-cannot-find-id data-var id)
 	(progn
 	  (if twittering-jojo-mode
 	      (twittering-update-jojo (cdr (assq 'user-screen-name
