@@ -54,7 +54,7 @@
   (twittering-update-footer-from-minibuffer))
 
 (defun twittering-update-footer-from-minibuffer (&optional init-str)
-  (if (null init-str) (setq init-str ""))
+  (if (null init-str) (setq init-str twittering-footer))
   (let ((footer init-str) (not-posted-p t))
     (setq footer (read-from-minibuffer "footer: " footer nil nil nil nil t))
     (setq twittering-footer footer)))
@@ -510,39 +510,6 @@ directory. You should change through function'twittering-icon-mode'")
 
 
 
-(defun twittering-http-post
-  (method-class method &optional parameters contents sentinel)
-  "Send HTTP POST request to twitter.com
-
-METHOD-CLASS must be one of Twitter API method classes
- (statuses, users or direct_messages).
-METHOD must be one of Twitter API method which belongs to METHOD-CLASS.
-PARAMETERS is alist of URI parameters.
- ex) ((\"mode\" . \"view\") (\"page\" . \"6\")) => <URI>?mode=view&page=6"
-  (if (null sentinel)
-      (setq sentinel 'twittering-http-post-default-sentinel))
-
-  ;; clear the buffer
-  (twittering-clear-buffer)
-
-  (let (proc server port
-	     (proxy-user twittering-proxy-user)
-	     (proxy-password twittering-proxy-password))
-    (progn
-      (setq server (twittering-set-server)
-	    port (twittering-set-port))
-
-      (setq proc
-	    (twittering-setup-network server port))
-
-      (set-process-sentinel proc sentinel)
-      (process-send-string
-       proc
-       (let (request)
-	 (setq request
-	       (twittering-create-request "POST" method-class method parameters))
-	 (debug-print (concat "POST Request\n" request))
-	 request)))))
 
 (defun twittering-http-method
   (http-method method-class method &optional parameters sentinel contents)
@@ -1409,7 +1376,8 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 			,@(if reply-to-id
 			      `(("in_reply_to_status_id"
 				 . ,reply-to-id))))))
-      (twittering-http-post "statuses" "update" parameters))
+;      (twittering-http-post "statuses" "update" parameters))
+      (twittering-http-method "POST" "statuses" "update" parameters))
     t))
 
 (defun twittering-update-status-from-minibuffer (&optional init-str
@@ -1427,13 +1395,13 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (let ((id (get-text-property (point) 'id)
 	    ))
     (when id
-      (twittering-http-post
+      (twittering-http-method "POST"
        "favorites" (concat "create/" id)
        ))))
 
 (defun twittering-update-lambda ()
   (interactive)
-  (twittering-http-post
+  (twittering-http-method "POST"
    "statuses" "update"
    `(("status" . "\xd34b\xd22b\xd26f\xd224\xd224\xd268\xd34b")
      ("source" . "twmode"))))
@@ -1441,7 +1409,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 (defun twittering-update-jojo (usr msg)
   (if (string-match "\xde21\xd24b\\(\xd22a\xe0b0\\|\xdaae\xe6cd\\)\xd24f\xd0d6\\([^\xd0d7]+\\)\xd0d7\xd248\xdc40\xd226"
 		    msg)
-      (twittering-http-post
+      (twittering-http-method "POST"
        "statuses" "update"
        `(("status" . ,(concat
 		       "@" usr " "
@@ -1554,6 +1522,32 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (if (not buf)
 	(twittering-stop)
       (twittering-http-method "GET" "statuses/followers" username "" 'twittering-http-get-user-sentinel))
+    )
+  (if (and twittering-icon-mode window-system)
+      (if twittering-image-stack
+	  (let ((proc
+		 (apply
+		  #'start-process
+		  "wget-images"
+		  (twittering-wget-buffer)
+		  "wget"
+		  (format "--directory-prefix=%s" twittering-tmp-dir)
+		  "--no-clobber"
+		  "--quiet"
+		  twittering-image-stack)))
+	    (set-process-sentinel
+	     proc
+	     (lambda (proc stat)
+	       (clear-image-cache)
+	       (save-excursion
+		 (set-buffer (twittering-wget-buffer))
+		 )))))))
+
+(defun twittering-get-followings (username)
+  (let ((buf (get-buffer twittering-buffer)))
+    (if (not buf)
+	(twittering-stop)
+      (twittering-http-method "GET" "statuses/friends" username "" 'twittering-http-get-user-sentinel))
     )
   (if (and twittering-icon-mode window-system)
       (if twittering-image-stack
