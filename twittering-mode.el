@@ -49,6 +49,16 @@
 (defconst twittering-mode-version "0.8")
 
 (defvar twittering-footer " [NHK-FM SF･ヒーロー三昧なう #zanmai]")
+(defun twittering-update-footer ()
+  (interactive)
+  (twittering-update-footer-from-minibuffer))
+
+(defun twittering-update-footer-from-minibuffer (&optional init-str)
+  (if (null init-str) (setq init-str ""))
+  (let ((footer init-str) (not-posted-p t))
+    (setq footer (read-from-minibuffer "footer: " footer nil nil nil nil t))
+    (setq twittering-footer footer)))
+
 
 (defun twittering-mode-version ()
   "Display a message for twittering-mode version."
@@ -303,6 +313,7 @@ directory. You should change through function'twittering-icon-mode'")
       (define-key km "\C-c\C-l" 'twittering-update-lambda)
       (define-key km [mouse-1] 'twittering-click)
       (define-key km "\C-c\C-v" 'twittering-view-user-page)
+      (define-key km "\C-c\C-z" 'twittering-update-footer)
 ;      (define-key km "d" 'twittering-received-direct-messages)
 ;      (define-key km "D" 'twittering-sent-direct-messages)
 ;      (define-key km "\C-c\C-d" 'twittering-new-direct-message)
@@ -498,39 +509,6 @@ directory. You should change through function'twittering-icon-mode'")
 		    (twittering-use-proxy-request proxy-user proxy-password)) nl)))))
 
 
-(defun twittering-http-get (method-class method &optional parameters sentinel)
-  ; sentinel ||= set sentinel
-  (if (null sentinel)
-      (setq sentinel 'twittering-http-get-default-sentinel))
-  (twittering-clear-buffer)
-  ; define local variables
-  (let (proc server port
-	     (proxy-user twittering-proxy-user)
-	     (proxy-password twittering-proxy-password))
-    (condition-case nil
-	(progn
-	  ; proxy-use ? proxy : normal
-	  (setq server (twittering-set-server)
-		port (twittering-set-port))
-
-	  ; setup network open
-	  (setq proc
-		(twittering-setup-network server port))
-
-	  ; process 監視?
-	  (set-process-sentinel proc sentinel)
-
-	  ; send-http-request
-	  (process-send-string
-	   proc
-	   (let (request)
-	     (progn
-	       (setq request
-		     (twittering-create-request "GET" method-class method))
-	       (debug-print (concat "GET Request\n" request))
-	       request))))
-      (error
-       (message "Failure: HTTP GET") nil))))
 
 (defun twittering-http-post
   (method-class method &optional parameters contents sentinel)
@@ -1575,7 +1553,6 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (let ((buf (get-buffer twittering-buffer)))
     (if (not buf)
 	(twittering-stop)
-;      (twittering-http-get "statuses/followers" username "" 'twittering-http-get-user-sentinel))
       (twittering-http-method "GET" "statuses/followers" username "" 'twittering-http-get-user-sentinel))
     )
   (if (and twittering-icon-mode window-system)
