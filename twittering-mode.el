@@ -48,7 +48,7 @@
 
 (defconst twittering-mode-version "0.8.1")
 
-(defvar twittering-footer " [NHK-FM SF･ヒーロー三昧なう #zanmai]")
+(defvar twittering-footer "")
 (defun twittering-update-footer ()
   (interactive)
   (twittering-update-footer-from-minibuffer))
@@ -320,6 +320,8 @@ directory. You should change through function'twittering-icon-mode'")
 ;      (define-key km "\C-c\C-d" 'twittering-new-direct-message)
       (define-key km "[" 'twittering-following-list)
       (define-key km "]" 'twittering-follower-list)
+      (define-key km "{" 'twittering-other-user-following-list)
+      (define-key km "}" 'twittering-other-user-follower-list)
 ;      (define-key km "\C-[" 'twittering-add-following)
 ;      (define-key km "\C-]" 'twittering-remove-following)
       (define-key km "g" 'twittering-current-timeline-interactive)
@@ -1568,6 +1570,22 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (interactive)
   (twittering-get-followers twittering-username)
 )
+
+(defun twittering-other-user-following-list()
+  (interactive)
+  (let ((username (get-text-property (point) 'username)))
+    (if (> (length username) 0)
+	(twittering-get-followings username)
+      (message "No user selected"))))
+
+
+(defun twittering-other-user-follower-list()
+  (interactive)
+  (let ((username (get-text-property (point) 'username)))
+    (if (> (length username) 0)
+	(twittering-get-followers username)
+      (message "No user selected"))))
+
 ;(defun twittering-add-following())
 ;(defun twittering-remove-following())
 
