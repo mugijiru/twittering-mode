@@ -7,7 +7,7 @@
 ;;         Tsuyoshi CHO <Tsuyoshi.CHO+develop@Gmail.com>
 ;;         Alberto Garcia  <agarcia@igalia.com>
 ;; Created: Sep 4, 2007
-;; Version: 0.4
+;; Version: 0.8
 ;; Keywords: twitter web
 ;; URL: http://lambdarepos.svnrepository.com/share/trac.cgi/browser/lang/elisp/twittering-mode
 
@@ -46,7 +46,7 @@
 (require 'xml)
 (require 'parse-time)
 
-(defconst twittering-mode-version "0.8")
+(defconst twittering-mode-version "0.8.1")
 
 (defvar twittering-footer " [NHK-FM SF･ヒーロー三昧なう #zanmai]")
 (defun twittering-update-footer ()
@@ -102,10 +102,11 @@ tweets received when this hook is run.")
 (make-variable-buffer-local 'twittering-jojo-mode)
 
 (defvar twittering-status-format nil)
-(setq twittering-status-format "%i %S(%s)%p, %@:\n  %t // from %f%L%r")
+(setq twittering-status-format "%i %S(%s)%p, %@:\n  %t // from %f%L%r %u")
 
 (defvar twittering-user-format nil)
-(setq twittering-user-format "%i %S(%s)%p %L [Web: %u]\n %d\n last twit:\n %t")
+(setq twittering-user-format 
+      "%i %S(%s)%p %L [Web: %u]\n %d\n--------------------------\n%t")
 ;; %s - screen_name
 ;; %S - name
 ;; %i - profile_image
@@ -814,30 +815,7 @@ PARAMETERS is alist of URI parameters.
 
 (defun twittering-format-user (status format-str)
   (flet ((attr (key)
-	       (assocref key status))
-	 (profile-image
-	  ()
-	  (let ((profile-image-url (attr 'profile-image-url))
-		(icon-string "\n  "))
-	    (if (string-match "/\\([^/?]+\\)\\(?:\\?\\|$\\)" profile-image-url)
-		(let ((filename (match-string-no-properties 1
-							    profile-image-url)))
-		  ;; download icons if does not exist
-		  (if (file-exists-p (concat twittering-tmp-dir
-					     "/" filename))
-		      t
-		    (add-to-list 'twittering-image-stack profile-image-url))
-
-		  (when (and icon-string twittering-icon-mode)
-		    (set-text-properties
-		     1 2 `(display
-			   (image :type ,(twittering-image-type filename)
-				  :file ,(concat twittering-tmp-dir
-						 "/"
-						 filename)))
-		     icon-string)
-		    icon-string)
-		  )))))
+	       (assocref key status)))
     (let ((cursor 0)
 	  (result ())
 	  c
@@ -1187,7 +1165,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 
       ;; make URI clickable
 ;      (setq url (twittering-clickable-all-matched-string url "\\(https?://[-_.!~*'()a-zA-Z0-9;/?:@&=+$,%#]+\\)"))
-
+;      (twittering-clickable-text url url)
 
       ;; make URI clickable
 ;      (setq text (twittering-clickable-all-matched-string text "\\(https?://[-_.!~*'()a-zA-Z0-9;/?:@&=+$,%#]+\\)"))
@@ -1229,22 +1207,27 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;		source ,text)
    text))
 
+(defun twittering-set-url (matcher matched-string)
+  (if (string-match "^@" matcher)
+      (concat "http://twitter.co/" matched-string)
+    matched-string))
+
 (defun twittering-clickable-matched-string (text matcher)
   (if (string-match matcher text)
       (let ((matched-string (match-string-no-properties 1 text))
 	    (match-start (match-beginning 0))
-	    (match-end (match-end 0))
-	    tail uri result)
-	(setq uri (if (string-match "^@" matcher)
-		      (concat "http://twitter.com/" matched-string)
-		    matched-string))
-	(twittering-clickable-text uri text match-start match-end)
+	    (match-end (match-end 0)))
+	(twittering-clickable-text (twittering-set-url matcher matched-string)
+				   text
+				   match-start
+				   match-end)
 	(concat (substring text 0 match-end)
 		(twittering-clickable-matched-string (substring text match-end) matcher)))
     text))
 
 (defun twittering-clickable-all-matched-string (text matcher)
   (twittering-clickable-matched-string text matcher))
+
 
 (defun twittering-xmltree-to-cons-cell (xml-attr)
   (if xml-attr
@@ -1518,6 +1501,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 		 )))))))
 
 (defun twittering-get-followers (username)
+  (setq twittering-user-data nil)
   (let ((buf (get-buffer twittering-buffer)))
     (if (not buf)
 	(twittering-stop)
@@ -1544,6 +1528,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 		 )))))))
 
 (defun twittering-get-followings (username)
+  (setq twittering-user-data nil)
   (let ((buf (get-buffer twittering-buffer)))
     (if (not buf)
 	(twittering-stop)
