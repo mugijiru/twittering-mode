@@ -107,7 +107,7 @@ tweets received when this hook is run.")
 
 (defvar twittering-user-format nil)
 (setq twittering-user-format 
-      "%i %S(%s)%p%F %L [Web: %u]\n %d\n--------------------------\n%t")
+      "%i %S(%s)%p%F %L [Web: %u]\n %d\n------------- last twit -------------\n%t")
 ;; %s - screen_name
 ;; %S - name
 ;; %i - profile_image
@@ -211,11 +211,12 @@ tweets received when this hook is run.")
 (defvar twittering-icon-mode nil "You MUST NOT CHANGE this variable
 directory. You should change through function'twittering-icon-mode'")
 
+
+; test done
 (defun twittering-tmp-dir-name ()
   "return tmp-dir-name"
   (expand-file-name (concat "twmode-images-" (user-login-name))
 		    temporary-file-directory))
-
 
 (defvar twittering-tmp-dir
   (let ((tmp-dir (twittering-tmp-dir-name)))
@@ -438,12 +439,14 @@ directory. You should change through function'twittering-icon-mode'")
    server (string-to-number port))
 )
 
+;test done
 (defun twittering-check-use-proxy ()
   "use-proxy?"
   (if (and twittering-proxy-use twittering-proxy-server)
       t
     nil))
 
+;test done
 (defun twittering-proxy-port-string ()
   "if proxy-port type is integer, cast to string"
   (if (integerp twittering-proxy-port)
@@ -451,6 +454,7 @@ directory. You should change through function'twittering-icon-mode'")
     twittering-proxy-port))
 
 
+;test done
 (defun twittering-set-port ()
   "return port number"
   (if (twittering-check-use-proxy)
@@ -458,10 +462,11 @@ directory. You should change through function'twittering-icon-mode'")
     "80"))
 
 
+; test done
 (defun twittering-set-server ()
   "return server url"
   (if (twittering-check-use-proxy)
-      (twittering-proxy-server)
+      twittering-proxy-server
     "twitter.com"))
 
 (defun twittering-get-request-parameters (parameters)
@@ -1227,9 +1232,10 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;		source ,text)
    text))
 
+;test done
 (defun twittering-set-url (matcher matched-string)
   (if (string-match "^@" matcher)
-      (concat "http://twitter.co/" matched-string)
+      (concat "http://twitter.com/" matched-string)
     matched-string))
 
 (defun twittering-clickable-matched-string (text matcher)
@@ -1253,8 +1259,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (if xml-attr
       (if (consp (car xml-attr))
 	  (cons (car xml-attr) (twittering-xmltree-to-cons-cell (cdr xml-attr)))
-	(progn
-	  (twittering-xmltree-to-cons-cell (cdr xml-attr))))
+	(twittering-xmltree-to-cons-cell (cdr xml-attr)))
     nil))
 
 (defun twittering-xmltree-to-status (xmltree)
@@ -1270,12 +1275,8 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	  ;; quirk to treat difference between xml.el in Emacs21 and Emacs22
 	  ;; On Emacs22, there may be blank strings
           (let ((ret nil) (users (reverse (cddr (car xmltree)))))
-            (while users
-              (if (consp (car users))
-                  (setq ret (cons (car users) ret)))
-              (setq users (cdr users)))
-            ret)))
-;	    (twittering-xmltree-to-cons-cell users))))
+	    (setq max-lisp-eval-depth 1000)
+	    (nreverse (twittering-xmltree-to-cons-cell users)))))
 
 
 (defun twittering-percent-encode (str &optional coding-system)
@@ -1787,9 +1788,15 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
       (setq end-pos (next-single-property-change pos 'face))
       (buffer-substring start-pos end-pos))))
 
+;test done
 (defun twittering-get-status-url (username id)
   "Generate status URL."
   (format "http://twitter.com/%s/statuses/%s" username id))
+
+
+
+
+
 
 ;;;###autoload
 (defun twit ()
