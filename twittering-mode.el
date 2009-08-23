@@ -212,7 +212,6 @@ tweets received when this hook is run.")
 directory. You should change through function'twittering-icon-mode'")
 
 
-; test done
 (defun twittering-tmp-dir-name ()
   "return tmp-dir-name"
   (expand-file-name (concat "twmode-images-" (user-login-name))
@@ -435,30 +434,24 @@ directory. You should change through function'twittering-icon-mode'")
    server (string-to-number port))
 )
 
-;test done
 (defun twittering-check-use-proxy ()
   "use-proxy?"
   (if (and twittering-proxy-use twittering-proxy-server)
       t
     nil))
 
-;test done
 (defun twittering-proxy-port-string ()
   "if proxy-port type is integer, cast to string"
   (if (integerp twittering-proxy-port)
       (int-to-string twittering-proxy-port)
     twittering-proxy-port))
 
-
-;test done
 (defun twittering-set-port ()
   "return port number"
   (if (twittering-check-use-proxy)
       (twittering-proxy-port-string)
     "80"))
 
-
-; test done
 (defun twittering-set-server ()
   "return server url"
   (if (twittering-check-use-proxy)
@@ -502,7 +495,6 @@ directory. You should change through function'twittering-icon-mode'")
      (if parameters 
 	 (twittering-http-header-base http-method method-class method parameters)
        (twittering-http-header-base http-method method-class method))
-     ; if "POST" elsif "GET" elsif "DELETE"...
      (if (string= http-method "POST")
 	 (concat
 	   "Content-Type: text/plain" nl
@@ -529,7 +521,6 @@ PARAMETERS is alist of URI parameters.
 	  (setq sentinel 'twittering-http-get-default-sentinel)
 	(setq sentinel 'twittering-http-post-default-sentinel)))
 
-  ;; clear the buffer
   (twittering-clear-buffer)
 
   (let (proc server port
@@ -663,9 +654,6 @@ PARAMETERS is alist of URI parameters.
       (goto-char (+ point (if twittering-scroll-mode (- (point-max) end) 0))))
     ))
 
-;(defun twittering-get-attribute (attributes key)
-;  (assocref key attributes)
-;)
 
 (defun twittering-profile-image (profile-image-url)
   (let ((icon-string "\n  "))
@@ -880,47 +868,6 @@ PARAMETERS is alist of URI parameters.
 	  ((?K) ; friends count
 	     (list-push (attr 'followers-count) result))
 
-;	  ((?c)                     ; %c - created_at (raw UTC string)
-;	   (list-push (attr 'created-at) result))
-;	  ((?C) ; %C{time-format-str} - created_at (formatted with
-;	   ; time-format-str)
-;	   (list-push (twittering-local-strftime
-;		       (or (match-string-no-properties 2 format-str) "%H:%M:%S")
-;		       (attr 'created-at))
-;		      result))
-;	  ((?@)                         ; %@ - X seconds ago
-;	   (let ((created-at
-;		  (apply
-;		   'encode-time
-;		   (parse-time-string (attr 'created-at))))
-;		 (now (current-time)))
-;	     (let ((secs (+ (* (- (car now) (car created-at)) 65536)
-;			    (- (cadr now) (cadr created-at))))
-;		   time-string url)
-;       (setq time-string
-;	     (cond ((< secs 5) "less than 5 seconds ago")
-;		   ((< secs 10) "less than 10 seconds ago")
-;		   ((< secs 20) "less than 20 seconds ago")
-;		   ((< secs 30) "half a minute ago")
-;		   ((< secs 60) "less than a minute ago")
-;		   ((< secs 150) "1 minute ago")
-;		   ((< secs 2400) (format "%d minutes ago"
-;					  (/ (+ secs 30) 60)))
-;		   ((< secs 5400) "about 1 hour ago")
-;		   ((< secs 84600) (format "about %d hours ago"
-;					   (/ (+ secs 1800) 3600)))
-;		   (t (format-time-string "%I:%M %p %B %d, %Y"
-;					  created-at))))
-;       (setq url (twittering-get-status-url (attr 'screen-name)
-;					    (attr 'status-id)))
-;       ;; make status url clickable
-;       (add-text-properties
-;	0 (length time-string)
-;	`(mouse-face highlight
-;		     face twittering-uri-face
-;		     uri ,url)
-;	time-string)
-;       (list-push time-string result))))
 	  ((?t)                         ; %t - text
 	   (list-push                   ;(clickable-text)
 	    (attr 'status-text)
@@ -1142,15 +1089,6 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
       (twittering-clickable-text (concat "http://twitter.com/" screen-name)
 				 screen-name)
 
-      ;; make URI clickable
-;      (setq url (twittering-clickable-all-matched-string url "\\(https?://[-_.!~*'()a-zA-Z0-9;/?:@&=+$,%#]+\\)"))
-;      (twittering-clickable-text url url)
-
-      ;; make URI clickable
-;      (setq text (twittering-clickable-all-matched-string text "\\(https?://[-_.!~*'()a-zA-Z0-9;/?:@&=+$,%#]+\\)"))
-
-      ;; make @username clickable
-;      (setq text (twittering-clickable-all-matched-string text "@\\([_a-zA-Z0-9]+\\)"))
 
       ;; make source pretty and clickable
       (if (string-match "<a href=\"\\(.*\\)\">\\(.*\\)</a>" status-source)
@@ -1186,7 +1124,6 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;		source ,text)
    text))
 
-;test done
 (defun twittering-set-url (matcher matched-string)
   (if (string-match "^@" matcher)
       (concat "http://twitter.com/" matched-string)
@@ -1261,29 +1198,20 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	(while (setq found-at
 		     (string-match "&\\(#\\([0-9]+\\)\\|\\([A-Za-z]+\\)\\);"
 				   encoded-str cursor))
-	  ; cursor から encode された文字列の間にencodeされてない文字列があれば、
-	  ; それを result に push する
 	  (when (> found-at cursor)
 	    (list-push (substring encoded-str cursor found-at) result))
-
 	  (let ((number-entity (match-string-no-properties 2 encoded-str))
 		(letter-entity (match-string-no-properties 3 encoded-str)))
-
-	    ; 日本語などの #&12732; みたいなのは、ucsどうのこうのする
 	    (cond (number-entity
 		   (setq result (twittering-ucs-to-string result number-entity)))
 
-		  ; &lt; -> "<", &gt; -> ">", other (example &zzz;) -> "?" 
 		  (letter-entity
 		   (setq result (twittering-tag-decode result letter-entity)))
 
-		  ; match しなかったら ? をpush
 		  (t (list-push "?" result)))
 
-	    ; cursor 位置を移動
 	    (setq cursor (match-end 0))))
 
-	; encode された文字列がなくなったら、現在の cursor からケツまでをpush
 	(setq result (cons (substring encoded-str cursor) result))
 	(apply 'concat (nreverse result)))
     ""))
@@ -1740,15 +1668,9 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
       (setq end-pos (next-single-property-change pos 'face))
       (buffer-substring start-pos end-pos))))
 
-;test done
 (defun twittering-get-status-url (username id)
   "Generate status URL."
   (format "http://twitter.com/%s/statuses/%s" username id))
-
-
-
-
-
 
 ;;;###autoload
 (defun twit ()
