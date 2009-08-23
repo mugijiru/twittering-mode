@@ -107,7 +107,7 @@ tweets received when this hook is run.")
 
 (defvar twittering-user-format nil)
 (setq twittering-user-format 
-      "%i %S(%s)%p%F %L [Web: %u]\n %d\n------------- last twit -------------\n%t")
+      "%i %S(%s)%p%F %L [Web: %u]\n[Friends: %k][Followers: %K]\n%d\n------------- last twit -------------\n%t")
 ;; %s - screen_name
 ;; %S - name
 ;; %i - profile_image
@@ -220,14 +220,10 @@ directory. You should change through function'twittering-icon-mode'")
 
 (defvar twittering-tmp-dir
   (let ((tmp-dir (twittering-tmp-dir-name)))
-    (progn
-      (when tmp-dir
-	(progn
-	  (if (not (file-directory-p tmp-dir))
-	      (make-directory tmp-dir))
-	  )))
-    tmp-dir
-    )
+    (when tmp-dir
+      (if (not (file-directory-p tmp-dir))
+	  (make-directory tmp-dir)))
+    tmp-dir)
   "if not created tmp-dir, makedir and return it, else return tmp-dir"
   )
 
@@ -426,7 +422,7 @@ directory. You should change through function'twittering-icon-mode'")
 ;;;
 
 (defun twittering-clear-buffer ()
-  "clear twittering-buffer"
+  "clear twittering-http-buffer"
   (save-excursion
     (set-buffer (twittering-http-buffer))
     (erase-buffer))
@@ -475,13 +471,10 @@ directory. You should change through function'twittering-icon-mode'")
 	  (mapconcat
 	   (lambda (param-pair)
 	     (format "%s=%s"
-		     (twittering-percent-encode (car
-						 param-pair))
-		     (twittering-percent-encode (cdr
-						 param-pair))))
+		     (twittering-percent-encode (car param-pair))
+		     (twittering-percent-encode (cdr param-pair))))
 	   parameters
-	   "&"))  
-)
+	   "&")))
 
 (defun twittering-use-proxy-request (proxy-user proxy-password)
   ("Proxy-Connection: Keep-Alive" nl
@@ -492,8 +485,7 @@ directory. You should change through function'twittering-icon-mode'")
 (defun twittering-basic-authorization (user password)
   (base64-encode-string (concat user ":" password)))
 
-(defun twittering-create-request (http-method method-class method &optional parameters)
-  "create http request, http-method is (GET|POST)"
+(defun twittering-http-header-base (http-method method-class method &optional parameters)
   (let ((nl "\r\n"))
     (concat http-method " http://twitter.com/" method-class "/" method ".xml"
 	    (when parameters
@@ -501,25 +493,27 @@ directory. You should change through function'twittering-icon-mode'")
 	    " HTTP/1.1" nl
 	    "Host: twitter.com" nl
 	    "User-Agent: " (twittering-user-agent) nl
-	    "Authorization: Basic " (twittering-basic-authorization twittering-username (twittering-get-password)) nl
-
-	    ; if "POST" elsif "GET" elsif "DELETE"...
-	    (if (string= http-method "POST")
-		(progn
-		  "Content-Type: text/plain" nl
-		  "Content-Length: 0" nl
-		  (when twittering-proxy-use
-		    (twittering-use-proxy-request proxy-user proxy-password)) nl))
+	    "Authorization: Basic " (twittering-basic-authorization twittering-username (twittering-get-password)) nl)))
+  
+(defun twittering-create-request (http-method method-class method &optional parameters)
+  "create http request, http-method is (GET|POST)"
+  (let ((nl "\r\n"))
+    (concat 
+     (if parameters 
+	 (twittering-http-header-base http-method method-class method parameters)
+       (twittering-http-header-base http-method method-class method))
+     ; if "POST" elsif "GET" elsif "DELETE"...
+     (if (string= http-method "POST")
+	 (concat
+	   "Content-Type: text/plain" nl
+	   "Content-Length: 0" nl))
 	    
-	    (if (string= http-method "GET")
-		(progn
-		  "Accept: text/xml" ",application/xml" ",application/xhtml+xml" ",application/html;q=0.9" ",text/plain;q=0.8" ",image/png,*/*;q=0.5" nl
-		  "Accept-Charset: utf-8;q=0.7,*;q=0.7" nl
-		  (when twittering-proxy-use
-		    (twittering-use-proxy-request proxy-user proxy-password)) nl)))))
-
-
-
+     (if (string= http-method "GET")
+	 (concat
+	   "Accept: text/xml" ",application/xml" ",application/xhtml+xml" ",application/html;q=0.9" ",text/plain;q=0.8" ",image/png,*/*;q=0.5" nl
+	   "Accept-Charset: utf-8;q=0.7,*;q=0.7" nl))
+     (when twittering-proxy-use
+       (twittering-use-proxy-request proxy-user proxy-password)) nl)))
 
 (defun twittering-http-method
   (http-method method-class method &optional parameters sentinel contents)
@@ -587,24 +581,23 @@ PARAMETERS is alist of URI parameters.
 	(body (twittering-get-response "body"))
 	(status nil))
     (if (twittering-is-valid-http-header header)
-;    (if (string-match "HTTP/1\.1 \\([a-z0-9 ]+\\)\r?\n" header)
 	(progn
 	  (setq status (match-string-no-properties 1 header))
-	  (case-string
-	   status
-	   (("200 OK")
-	    (setq twittering-new-tweets-count
-		  (count t (mapcar
-			    #'twittering-cache-status-datum
-			    (reverse (twittering-xmltree-to-status
-				      body)))))
-	    (if (and (> twittering-new-tweets-count 0)
-		     (not twittering-last-timeline-interactive))
-		(run-hooks 'twittering-new-tweets-hook))
-	    (setq twittering-last-timeline-interactive t)
-	    (twittering-render-timeline)
-	    (message (if suc-msg suc-msg "Success: Get.")))
-	   (t (message status))))
+	  (case-string status
+		       (("200 OK")
+			(setq twittering-new-tweets-count
+			      (count t (mapcar
+					#'twittering-cache-status-datum
+					(reverse (twittering-xmltree-to-status
+						  body)))))
+			(if (and (> twittering-new-tweets-count 0)
+				 (not twittering-last-timeline-interactive))
+			    (run-hooks 'twittering-new-tweets-hook))
+			(setq twittering-last-timeline-interactive t)
+			(twittering-render-timeline)
+			(twittering-start)
+			(message (if suc-msg suc-msg "Success: Get.")))
+		       (t (message status))))
       (message "Failure: Bad http response.")))
   )
 
@@ -618,19 +611,13 @@ PARAMETERS is alist of URI parameters.
 	  (debug-print http-status)
 	  (case-string http-status
 	   (("200 OK")
-	    (setq reversed (reverse (twittering-xmltree-to-users
-				      body)))
 	    (setq twittering-new-tweets-count
 		  (count t (mapcar
 			    #'twittering-cache-user-datum
-			    reversed)))
-;			    (reverse (twittering-xmltree-to-users
-;				      body)))))
-;	    (if (and (> twittering-new-tweets-count 0)
-;		     (not twittering-last-timeline-interactive))
-;		(run-hooks 'twittering-new-tweets-hook))
-;	    (setq twittering-last-timeline-interactive t)
+			    (reverse (twittering-xmltree-to-users
+				      body)))))
 	    (twittering-render-user)
+	    (twittering-stop)
 	    (message (if suc-msg suc-msg "Success: Get.")))
 	   (t (message http-status))))
       (message "Failure: Bad http response."))))
@@ -683,11 +670,9 @@ PARAMETERS is alist of URI parameters.
 (defun twittering-profile-image (profile-image-url)
   (let ((icon-string "\n  "))
     (if (string-match "/\\([^/?]+\\)\\(?:\\?\\|$\\)" profile-image-url)
-	(let ((filename (match-string-no-properties 1
-						    profile-image-url)))
+	(let ((filename (match-string-no-properties 1 profile-image-url)))
 	  ;; download icons if does not exist
-	  (if (file-exists-p (concat twittering-tmp-dir
-				     "/" filename))
+	  (if (file-exists-p (concat twittering-tmp-dir "/" filename))
 	      t
 	    (add-to-list 'twittering-image-stack profile-image-url))
 
@@ -890,6 +875,10 @@ PARAMETERS is alist of URI parameters.
 		 (list-push "[フォロー済]" result)
 	       (list-push "[未フォロー]" result))))
 
+	  ((?k) ; friends count
+	     (list-push (attr 'friends-count) result))
+	  ((?K) ; friends count
+	     (list-push (attr 'followers-count) result))
 
 ;	  ((?c)                     ; %c - created_at (raw UTC string)
 ;	   (list-push (attr 'created-at) result))
@@ -957,41 +946,6 @@ PARAMETERS is alist of URI parameters.
 			     formatted-follow)
 	formatted-follow)
       )))
-
-
-(defun twittering-http-post
-  (method-class method &optional parameters contents sentinel)
-  "Send HTTP POST request to twitter.com
-
-METHOD-CLASS must be one of Twitter API method classes
- (statuses, users or direct_messages).
-METHOD must be one of Twitter API method which belongs to METHOD-CLASS.
-PARAMETERS is alist of URI parameters.
- ex) ((\"mode\" . \"view\") (\"page\" . \"6\")) => <URI>?mode=view&page=6"
-  (if (null sentinel)
-      (setq sentinel 'twittering-http-post-default-sentinel))
-
-  ;; clear the buffer
-  (twittering-clear-buffer)
-
-  (let (proc server port
-	     (proxy-user twittering-proxy-user)
-	     (proxy-password twittering-proxy-password))
-    (progn
-      (setq server (twittering-set-server)
-	    port (twittering-set-port))
-
-      (setq proc
-	    (twittering-setup-network server port))
-
-      (set-process-sentinel proc sentinel)
-      (process-send-string
-       proc
-       (let (request)
-	 (setq request
-	       (twittering-create-request "POST" method-class method parameters))
-	 (debug-print (concat "POST Request\n" request))
-	 request)))))
 
 
 (defun twittering-get-response (type &optional buffer)
@@ -1244,9 +1198,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	    (match-start (match-beginning 0))
 	    (match-end (match-end 0)))
 	(twittering-clickable-text (twittering-set-url matcher matched-string)
-				   text
-				   match-start
-				   match-end)
+				   text match-start match-end)
 	(concat (substring text 0 match-end)
 		(twittering-clickable-matched-string (substring text match-end) matcher)))
     text))
