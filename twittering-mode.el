@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2007 Yuto Hayamizu.
 ;;               2008 Tsuyoshi CHO
-;;               2009 NOrito Uehara
+;;               2009 Norito Uehara
 
 ;; Author: Y. Hayamizu <y.hayamizu@gmail.com>
 ;;         Tsuyoshi CHO <Tsuyoshi.CHO+develop@Gmail.com>
@@ -1232,8 +1232,8 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     encoded-str))
 
 (defun twittering-ucs-to-string (result number-entity)
-  (concat (char-to-string 
-	   (twittering-ucs-to-char (string-to-number number-entity))) result))
+  (list-push (char-to-string 
+	      (twittering-ucs-to-char (string-to-number number-entity))) result))
 
 (defun twittering-tag-decode (result letter-entity)
   (cond ((string= "gt" letter-entity) (list-push ">" result))
