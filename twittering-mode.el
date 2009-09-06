@@ -644,6 +644,7 @@ PARAMETERS is alist of URI parameters.
 	(progn
 	  (setq http-status (match-string-no-properties 1 header))
 	  (debug-print http-status)
+	  (setq twittering-dm-data nil)
 	  (case-string http-status
 	   (("200 OK")
 	    (setq twittering-new-tweets-count
