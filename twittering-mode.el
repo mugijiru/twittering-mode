@@ -149,6 +149,11 @@ tweets received when this hook is run.")
 ;; %F - following(status formatではAPI戻り値が不定なので信用性なし)
 ;; %# - id
 
+(defvar twittering-lists-format nil)
+(setq twittering-lists-format 
+      "%f [member: %m][follower: %s]%x")
+
+
 (defvar twittering-buffer "*twittering*")
 (defun twittering-buffer ()
   (twittering-get-or-generate-buffer twittering-buffer))
@@ -162,6 +167,7 @@ tweets received when this hook is run.")
 
 (defvar twittering-user-data nil)
 (defvar twittering-dm-data nil)
+(defvar twittering-lists-data nil)
 
 (defvar twittering-username-face 'twittering-username-face)
 (defvar twittering-uri-face 'twittering-uri-face)
@@ -342,7 +348,8 @@ directory. You should change through function'twittering-icon-mode'")
       (define-key km "\C-c\C-e" 'twittering-erase-old-statuses)
       (define-key km "\C-c\C-m" 'twittering-retweet)
       (define-key km "\C-m" 'twittering-enter)
-      (define-key km "\C-c\C-l" 'twittering-update-lambda)
+;      (define-key km "\C-c\C-l" 'twittering-update-lambda)
+      (define-key km "\C-cL" 'twittering-show-lists)
       (define-key km [mouse-1] 'twittering-click)
       (define-key km "\C-c\C-v" 'twittering-view-user-page)
       (define-key km "\C-c\C-z" 'twittering-update-footer)
@@ -712,6 +719,27 @@ PARAMETERS is alist of URI parameters.
       (message "Failure: Bad http response."))))
 
 
+(defun twittering-http-get-lists-sentinel (proc stat &optional suc-msg)
+  (let ((header (twittering-get-response "head"))
+	(body (twittering-get-response "body"))
+	(http-status nil))
+    (if (twittering-is-valid-http-header header)
+	(progn
+	  (setq http-status (match-string-no-properties 1 header))
+	  (case-string http-status
+	   (("200 OK")
+	    (setq twittering-new-tweets-count
+		  (count t (mapcar
+			    #'twittering-cache-lists-datum
+			    (reverse (twittering-xmltree-to-lists
+				      body)))))
+	    (twittering-render-lists)
+	    (twittering-stop)
+	    (message (if suc-msg suc-msg "Success: Get.")))
+	   (t (message http-status))))
+      (message "Failure: Bad http response."))))
+
+
 (defun twittering-created-at-to-seconds (created-at)
   (let ((encoded-time (apply 'encode-time (parse-time-string created-at))))
     (+ (* (car encoded-time) 65536)
@@ -771,6 +799,26 @@ PARAMETERS is alist of URI parameters.
 	       (save-excursion (beginning-of-line) (point)) (point))
 	      (insert "\n"))
 	    twittering-dm-data)
+      (if (and twittering-image-stack window-system)
+	  (clear-image-cache))
+      (setq buffer-read-only t)
+      (debug-print (current-buffer))
+      (goto-char (+ point (if twittering-scroll-mode (- (point-max) end) 0))))
+    ))
+
+(defun twittering-render-lists ()
+  (with-current-buffer (twittering-buffer)
+    (let ((point (point))
+	  (end (point-max)))
+      (setq buffer-read-only nil)
+      (erase-buffer)
+      (mapc (lambda (list)
+	      (insert (twittering-format-lists
+		       list twittering-lists-format))
+	      (fill-region-as-paragraph
+	       (save-excursion (beginning-of-line) (point)) (point))
+	      (insert "\n"))
+	    twittering-lists-data)
       (if (and twittering-image-stack window-system)
 	  (clear-image-cache))
       (setq buffer-read-only t)
@@ -1146,6 +1194,45 @@ PARAMETERS is alist of URI parameters.
 	formatted-dm)
       )))
 
+(defun twittering-format-lists (lists format-str)
+  (flet ((attr (key)
+	       (assocref key lists)))
+    (let ((cursor 0)
+	  (result ())
+	  c
+	  found-at)
+      (debug-print lists)
+      (setq cursor 0)
+      (setq result '())
+      (while (setq found-at (string-match "%\\(C{\\([^}]+\\)}\\|[A-Za-z#@']\\)"
+					  format-str cursor))
+	(setq c (string-to-char (match-string-no-properties 1 format-str)))
+	(if (> found-at cursor)
+	    (list-push (substring format-str cursor found-at) result)
+	  "|")
+	(setq cursor (match-end 1))
+
+	(case c
+	  ((?s)                         ; %s - subscriber-count
+	   (list-push (attr 'subscriber-count) result))
+	  ((?m)                         ; %m - member-count
+	   (list-push (attr 'member-count) result))
+	  ((?f)                         ; %f - full-name
+	   (list-push (attr 'full-name) result))
+	  ((?x)                         ; %f - full-name
+	   (list-push "test" result))
+	  (t
+	   (list-push (char-to-string c) result))))
+      (list-push (substring format-str cursor) result)
+      (let ((formatted-lists (apply 'concat (nreverse result))))
+;	(add-text-properties 0 (length formatted-lists)
+;			     `(username ,(attr 'sender-screen-name)
+;					id ,(attr 'id)
+;					text ,(attr 'text))
+;			     formatted-lists)
+	formatted-lists)
+      )))
+
 
 
 (defun twittering-get-response (type &optional buffer)
@@ -1212,6 +1299,19 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (if (twittering-data-var-is-null-or-cannot-find-id data-var id)
 	(progn
 	  (set data-var (cons dm-datum (symbol-value data-var)))
+	  t)
+      nil)))
+
+(defun twittering-cache-lists-datum (lists-datum &optional data-var)
+  "Cache status datum into data-var(default twittering-user-data)
+If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
+  (if (null data-var)
+      (setf data-var 'twittering-lists-data))
+  (let ((id (cdr (assq 'id lists-datum))))
+
+    (if (twittering-data-var-is-null-or-cannot-find-id data-var id)
+	(progn
+	  (set data-var (cons lists-datum (symbol-value data-var)))
 	  t)
       nil)))
 
@@ -1428,6 +1528,83 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	    sender-following)))))
 
 
+(defun twittering-lists-to-lists-datum (lists)
+  (flet ((assq-get (item seq)
+		   (car (cddr (assq item seq)))))
+    (let* ((lists-data (cddr  lists))
+	   id name full-name slug subscriber-count member-count uri mode
+	   (user-data (cddr (assq 'user lists-data)))
+	   user-id user-name user-screen-name user-location
+	   user-description user-profile-image-url user-url
+	   user-protected user-following userfriends
+	   regex-index)
+
+      (setq id (assq-get 'id lists-data))
+      (setq name (assq-get 'name lists-data))
+      (setq full-name (assq-get 'full_name lists-data))
+      (setq slug (assq-get 'slug lists-data))
+      (setq subscriber-count (assq-get 'subscriber_count lists-data))
+      (setq member-count (assq-get 'member_count lists-data))
+      (setq uri (assq-get 'uri lists-data))
+      (setq mode (assq-get 'mode lists-data))
+
+      (setq user-id (assq-get 'user_id lists-data))
+      (setq user-name (twittering-decode-html-entities
+		       (assq-get 'name user-data)))
+      (setq user-screen-name (twittering-decode-html-entities
+			      (assq-get 'screen-name user-data)))
+      (setq user-location (twittering-decode-html-entities
+			   (assq-get 'location user-data)))
+      (setq user-description (twittering-decode-html-entities
+			      (assq-get 'description user-data)))
+      (setq user-profile-image-url (assq-get 'profile_image_url user-data))
+      (setq user-url (assq-get 'url user-data))
+      (setq user-protected (assq-get 'protected user-data))
+      (setq user-following (assq-get 'following user-data))
+
+
+      ;; make name clickable
+      (twittering-clickable-text (concat "http://twitter.com/" uri)
+				 name)
+
+      ;; make fullname clickable
+      (twittering-clickable-text (concat "http://twitter.com/" uri)
+				 full-name)
+
+      ;; make slug clickable
+      (twittering-clickable-text (concat "http://twitter.com/" uri)
+				 slug)
+
+      ;; make uri clickable
+      (twittering-clickable-text (concat "http://twitter.com/" uri)
+				 uri)
+
+      ;; make username clickable
+      (twittering-clickable-text (concat "http://twitter.com/" user-screen-name)
+				 user-name)
+
+      ;; make screen-name clickable
+      (twittering-clickable-text (concat "http://twitter.com/" user-screen-name)
+				 user-screen-name)
+
+      ;; make URI clickable
+;      (setq text (twittering-clickable-all-matched-string text "\\(https?://[-_.!~*'()a-zA-Z0-9;/?:@&=+$,%#]+\\)"))
+
+      ;; make @username clickable
+;      (setq text (twittering-clickable-all-matched-string text "@\\([_a-zA-Z0-9]+\\)"))
+
+      (mapcar
+       (lambda (sym)
+	 `(,sym . ,(symbol-value sym)))
+       '(id name full-name slug subscriber-count member-count uri mode
+	    user-id user-name user-screen-name user-location
+	    user-description
+	    user-profile-image-url
+	    user-url
+	    user-protected
+	    user-following)))))
+
+
 
 (defun twittering-clickable-text (link-url text &optional start-point end-point)
   (if (null start-point)
@@ -1488,11 +1665,42 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	    (nreverse (twittering-xmltree-to-cons-cell users)))))
 
 (defun twittering-xmltree-to-dms (xmltree)
+  (debug-print (cddr (car xmltree)))
   (mapcar #'twittering-dm-to-dm-datum
 	  ;; quirk to treat difference between xml.el in Emacs21 and Emacs22
 	  ;; On Emacs22, there may be blank strings
           (let ((ret nil) (dms (reverse (cddr (car xmltree)))))
 	    (nreverse (twittering-xmltree-to-cons-cell dms)))))
+
+(defun twittering-xmltree-to-lists (xmltree)
+;  (debug-print "xmltree-------------")
+;  (debug-print xmltree)
+;  (debug-print "car-------------")
+;  (debug-print (car xmltree))
+;  (debug-print "cdr car--------------")
+;  (debug-print (cdr (car xmltree)))
+;  (debug-print "r cdr car")
+;  (debug-print (reverse (cdr (car xmltree))))
+;  (debug-print "cddr r cdr car-------------")
+;  (debug-print (cddr (reverse (cdr (car xmltree)))))
+;  (debug-print "cddr cddr r cdr car---------------")
+;  (debug-print (cddr (cddr (reverse (cdr (car xmltree))))))
+;  (debug-print "cdr cddr cddr r cdr car---------------")
+;  (debug-print (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))
+;  (debug-print "car cdr cddr cddr r cdr car---------------")
+;  (debug-print (car (cdr (cddr (cddr (reverse (cdr (car xmltree))))))))
+;  (debug-print "cddr car cdr cddr cddr r cdr car---------------")
+;  (debug-print (cddr (car (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))))
+
+  (debug-print "end---------------")
+
+
+  (mapcar #'twittering-lists-to-lists-datum
+	  ;; quirk to treat difference between xml.el in Emacs21 and Emacs22
+	  ;; On Emacs22, there may be blank strings
+;          (let ((ret nil) (lists (reverse (cddr (car xmltree)))))
+          (let ((ret nil) (lists (reverse (cddr (car (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))))))
+	    (nreverse (twittering-xmltree-to-cons-cell lists)))))
 
 (defun twittering-percent-encode (str &optional coding-system)
   (if (or (null coding-system)
@@ -1785,6 +1993,10 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	(twittering-stop)
       (twittering-http-method "GET" "statuses/friends" username noninteractive "" 'twittering-http-get-user-sentinel))))
 
+
+
+; direct message functions
+
 (defun twittering-get-received-direct-messages ()
   (setq twittering-timeline-last-update nil
 	twittering-timeline-data nil)
@@ -1802,7 +2014,6 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	(twittering-stop)
       (twittering-http-method "GET" "direct_messages" "sent" noninteractive "" 'twittering-http-get-dm-sentinel))))
 
-
 (defun twittering-received-direct-messages ()
   (interactive)
   (twittering-get-received-direct-messages)
@@ -1811,6 +2022,10 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (interactive)
   (twittering-get-sent-direct-messages)
 )
+
+
+
+; follow/friend functions
 
 (defun twittering-following-list()
   (interactive)
@@ -1837,6 +2052,9 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	(twittering-get-followers username)
       (message "No user selected"))))
 
+
+;; favorites functions
+
 (defun twittering-favorites ()
   (interactive)
   (twittering-get-favorites twittering-username))
@@ -1847,6 +2065,9 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (if (> (length username) 0)
 	(twittering-get-favorites username)
       (message "No user selected"))))
+
+
+;; timeline functions
 
 (defun twittering-friends-timeline ()
   (interactive)
@@ -2065,6 +2286,22 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 (defun twittering-get-status-url (username id)
   "Generate status URL."
   (format "http://twitter.com/%s/statuses/%s" username id))
+
+(defun twittering-show-lists ()
+  "show lists index"
+  (interactive)
+  (twittering-get-lists)
+)
+
+; must move position
+(defun twittering-get-lists ()
+  (setq twittering-lists-data nil)
+  (let ((buf (get-buffer twittering-buffer)))
+    (if (not buf)
+	(twittering-stop)
+      (twittering-http-method "GET" twittering-username "lists" noninteractive "" 'twittering-http-get-lists-sentinel))))
+
+
 
 (defun twittering-suspend ()
   "Suspend twittering-mode then switch to another buffer."
