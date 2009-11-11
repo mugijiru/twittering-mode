@@ -1815,7 +1815,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (let ((parameters `(("user" . ,username)
 			("source" . "twmode")
 			("text" . ,text))))
-      (twittering-http-method "POST" "direct_messages" "new" parameters))
+      (twittering-http-method "POST" "direct_messages" "new" nil parameters))
     t))
 
 
