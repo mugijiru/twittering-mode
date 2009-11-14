@@ -349,7 +349,8 @@ directory. You should change through function'twittering-icon-mode'")
       (define-key km "\C-c\C-m" 'twittering-retweet)
       (define-key km "\C-m" 'twittering-enter)
 ;      (define-key km "\C-c\C-l" 'twittering-update-lambda)
-      (define-key km "\C-cL" 'twittering-show-lists)
+      (define-key km "\C-c\C-l" 'twittering-show-lists)
+      (define-key km "\C-cl" 'twittering-show-other-user-lists)
       (define-key km [mouse-1] 'twittering-click)
       (define-key km "\C-c\C-v" 'twittering-view-user-page)
       (define-key km "\C-c\C-z" 'twittering-update-footer)
@@ -1673,32 +1674,9 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 	    (nreverse (twittering-xmltree-to-cons-cell dms)))))
 
 (defun twittering-xmltree-to-lists (xmltree)
-;  (debug-print "xmltree-------------")
-;  (debug-print xmltree)
-;  (debug-print "car-------------")
-;  (debug-print (car xmltree))
-;  (debug-print "cdr car--------------")
-;  (debug-print (cdr (car xmltree)))
-;  (debug-print "r cdr car")
-;  (debug-print (reverse (cdr (car xmltree))))
-;  (debug-print "cddr r cdr car-------------")
-;  (debug-print (cddr (reverse (cdr (car xmltree)))))
-;  (debug-print "cddr cddr r cdr car---------------")
-;  (debug-print (cddr (cddr (reverse (cdr (car xmltree))))))
-;  (debug-print "cdr cddr cddr r cdr car---------------")
-;  (debug-print (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))
-;  (debug-print "car cdr cddr cddr r cdr car---------------")
-;  (debug-print (car (cdr (cddr (cddr (reverse (cdr (car xmltree))))))))
-;  (debug-print "cddr car cdr cddr cddr r cdr car---------------")
-;  (debug-print (cddr (car (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))))
-
-  (debug-print "end---------------")
-
-
   (mapcar #'twittering-lists-to-lists-datum
 	  ;; quirk to treat difference between xml.el in Emacs21 and Emacs22
 	  ;; On Emacs22, there may be blank strings
-;          (let ((ret nil) (lists (reverse (cddr (car xmltree)))))
           (let ((ret nil) (lists (reverse (cddr (car (cdr (cddr (cddr (reverse (cdr (car xmltree)))))))))))
 	    (nreverse (twittering-xmltree-to-cons-cell lists)))))
 
@@ -2290,16 +2268,24 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 (defun twittering-show-lists ()
   "show lists index"
   (interactive)
-  (twittering-get-lists)
-)
+  (twittering-get-lists twittering-username))
+
+(defun twittering-show-other-user-lists ()
+  "show other user's lists index"
+  (interactive)
+  (let ((username (get-text-property (point) 'username)))
+    (if (> (length username) 0)
+	(twittering-get-lists username)
+      (message "No user selected"))))
+
 
 ; must move position
-(defun twittering-get-lists ()
+(defun twittering-get-lists (username)
   (setq twittering-lists-data nil)
   (let ((buf (get-buffer twittering-buffer)))
     (if (not buf)
 	(twittering-stop)
-      (twittering-http-method "GET" twittering-username "lists" noninteractive "" 'twittering-http-get-lists-sentinel))))
+      (twittering-http-method "GET" username "lists" noninteractive "" 'twittering-http-get-lists-sentinel))))
 
 
 
