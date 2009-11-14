@@ -84,6 +84,7 @@ stored here. DO NOT SET VALUE MANUALLY.")
 (defvar twittering-user-page 1)
 (defvar twittering-last-used-method-class nil)
 (defvar twittering-last-used-method nil)
+(defvar twittering-last-used-listname nil)
 
 (defvar twittering-last-timeline-retrieved nil)
 
@@ -670,7 +671,7 @@ PARAMETERS is alist of URI parameters.
 				 noninteractive)
 			    (run-hooks 'twittering-new-tweets-hook))
 			(twittering-render-timeline)
-			(twittering-start)
+			(twittering-start #'twittering-current-timeline-noninteractive)
 			(message (if suc-msg suc-msg "Success: Get.")))
 ;		       (t (message status))))
 		       (t (message "Success"))))
@@ -736,6 +737,38 @@ PARAMETERS is alist of URI parameters.
 				      body)))))
 	    (twittering-render-lists)
 	    (twittering-stop)
+	    (message (if suc-msg suc-msg "Success: Get.")))
+	   (t (message http-status))))
+      (message "Failure: Bad http response."))))
+
+
+(defun twittering-http-get-list-sentinel (proc stat &optional suc-msg)
+  (let ((header (twittering-get-response "head"))
+	(body (twittering-get-response "body"))
+	(http-status nil))
+    (if (twittering-is-valid-http-header header)
+	(progn
+	  (setq http-status (match-string-no-properties 1 header))
+	  (case-string http-status
+	   (("200 OK")
+	    (setq twittering-new-tweets-count
+		  (count t (mapcar
+			    #'twittering-cache-status-datum
+			    (reverse (twittering-xmltree-to-status
+				      body)))))
+	    (setq twittering-timeline-data
+		  (sort twittering-timeline-data
+			(lambda (status1 status2)
+			  (let ((created-at1
+				 (twittering-created-at-to-seconds
+				  (cdr (assoc 'created-at status1))))
+				(created-at2
+				 (twittering-created-at-to-seconds
+				  (cdr (assoc 'created-at status2)))))
+			    (> created-at1 created-at2)))))
+	    (twittering-render-timeline)
+	    (twittering-start #'twittering-current-list-timeline-noninteractive)
+;	    (twittering-start)
 	    (message (if suc-msg suc-msg "Success: Get.")))
 	   (t (message http-status))))
       (message "Failure: Bad http response."))))
@@ -1226,11 +1259,12 @@ PARAMETERS is alist of URI parameters.
 	   (list-push (char-to-string c) result))))
       (list-push (substring format-str cursor) result)
       (let ((formatted-lists (apply 'concat (nreverse result))))
-;	(add-text-properties 0 (length formatted-lists)
-;			     `(username ,(attr 'sender-screen-name)
-;					id ,(attr 'id)
-;					text ,(attr 'text))
-;			     formatted-lists)
+	(add-text-properties 0 (length formatted-lists)
+			     `(username ,(attr 'user-screen-name)
+					listname ,(attr 'name)
+					id ,(attr 'id)
+					text ,(attr 'text))
+			     formatted-lists)
 	formatted-lists)
       )))
 
@@ -1553,7 +1587,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
       (setq user-name (twittering-decode-html-entities
 		       (assq-get 'name user-data)))
       (setq user-screen-name (twittering-decode-html-entities
-			      (assq-get 'screen-name user-data)))
+			      (assq-get 'screen_name user-data)))
       (setq user-location (twittering-decode-html-entities
 			   (assq-get 'location user-data)))
       (setq user-description (twittering-decode-html-entities
@@ -1754,6 +1788,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 
 (defun twittering-timer-action (func)
   (let ((buf (get-buffer twittering-buffer)))
+    (setq twittering-last-timer-action func)
     (if (null buf)
 	(twittering-stop)
       (funcall func)
@@ -1869,8 +1904,14 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (interactive)
   (if (null action)
       (setq action #'twittering-current-timeline-noninteractive))
+
   (if twittering-timer
-      nil
+      (unless (eq action twittering-last-timer-action)
+	(twittering-stop)
+	(setq twittering-timer
+	      (run-at-time "0 sec"
+			   twittering-timer-interval
+			   #'twittering-timer-action action)))
     (setq twittering-timer
 	  (run-at-time "0 sec"
 		       twittering-timer-interval
@@ -1879,7 +1920,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 (defun twittering-stop ()
   (interactive)
   (if twittering-timer
-    (cancel-timer twittering-timer))
+      (cancel-timer twittering-timer))
   (setq twittering-timer nil))
 
 (defun twittering-get-timeline (method &optional noninteractive id)
@@ -1939,7 +1980,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;	  (twittering-get-image-stack))))
 
 (defun twittering-get-followers (username &optional noninteractive page)
-  (if (or (not (eq twittering-last-used-method username)) 
+  (if (or (not (string= twittering-last-used-method username)) 
 	  (not (string= twittering-last-used-method-class "followers")))
       (setq twittering-user-last-update nil
 	    twittering-user-data nil
@@ -1970,6 +2011,54 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (if (not buf)
 	(twittering-stop)
       (twittering-http-method "GET" "statuses/friends" username noninteractive "" 'twittering-http-get-user-sentinel))))
+
+
+(defun twittering-get-list (username listname &optional noninteractive id)
+  (if (or (not (string= twittering-last-used-method username)) 
+	  (not (string= twittering-last-used-listname listname))
+	  (not (string= twittering-last-used-method-class "list_statuses")))
+      (progn
+	(debug-print twittering-last-used-method)
+	(debug-print twittering-last-used-method-class)
+	(debug-print twittering-last-used-listname)
+
+	(setq twittering-timeline-last-update nil
+	      twittering-timeline-data nil)))
+  (setq twittering-last-used-method username)
+  (setq twittering-last-used-listname listname)
+  (setq twittering-last-used-method-class "list_statuses")
+;  (setq twittering-last-timeline-retrieved username)
+  (setq twittering-user-page 1)
+  (let ((buf (get-buffer twittering-buffer)))
+    (if (not buf)
+	(twittering-stop)
+      (if id
+	  (twittering-http-method "GET" 
+				  username 
+				  (concat "lists/" listname "/statuses") 
+				  noninteractive
+				  `(("max_id" . ,id)
+				    ("count" . "20"))
+				  'twittering-http-get-list-sentinel)
+	(if (not twittering-timeline-last-update)
+	    (twittering-http-method "GET" 
+				    username 
+				    (concat "lists/" listname "/statuses") 
+				    noninteractive
+				    ""
+				    'twittering-http-get-list-sentinel)
+	  (let* ((system-time-locale "C")
+		 (since
+		  (twittering-global-strftime
+		   "%a, %d %b %Y %H:%M:%S GMT"
+		   twittering-timeline-last-update)))
+	    (twittering-http-method "GET"
+				    username 
+				    (concat "lists/" listname "/statuses") 
+				    noninteractive
+				    `(("since" . ,since))
+				    'twittering-http-get-list-sentinel)))))))
+
 
 
 
@@ -2069,14 +2158,21 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;  (twittering-current-timeline))
 
 
+;(defun twittering-reload ()
+;  (setq a)
+;)
+
 (defun twittering-current-timeline-noninteractive ()
   (twittering-current-timeline t))
 
 (defun twittering-current-timeline (&optional noninteractive)
   (interactive)
   (twittering-set-last-timeline-unless-set)
+  (debug-print "@@@@@@@@@@@@@@@@")
   (twittering-get-timeline twittering-last-timeline-retrieved noninteractive))
 
+(defun twittering-current-list-timeline-noninteractive ()
+  (twittering-get-list twittering-last-used-method twittering-last-used-listname noninteractive))
 
 (defun twittering-update-status-interactive ()
   (interactive)
@@ -2109,15 +2205,18 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 (defun twittering-enter ()
   (interactive)
   (let ((username (get-text-property (point) 'username))
+	(listname (get-text-property (point) 'listname))
 	(id (get-text-property (point) 'id))
 	(uri (get-text-property (point) 'uri))
 	(uri-in-text (get-text-property (point) 'uri-in-text)))
-    (if uri-in-text
-        (browse-url uri-in-text)
-      (if username
-	  (twittering-update-status-from-minibuffer (concat "@" username " ") id)
-	(if uri
-	    (browse-url uri))))))
+    (if listname
+	(twittering-get-list username listname)
+      (if uri-in-text
+	  (browse-url uri-in-text)
+	(if username
+	    (twittering-update-status-from-minibuffer (concat "@" username " ") id)
+	  (if uri
+	      (browse-url uri)))))))
 
 (defun twittering-retweet ()
   (interactive)
@@ -2182,6 +2281,10 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
 ;			  (setq twittering-user-page (+ twittering-user-page 1))
 ;			  (twittering-get-followers twittering-last-used-method
 ;						    nil twittering-user-page))
+			 (("list_statuses")
+			  (twittering-get-list twittering-last-used-method
+					       twittering-last-used-listname
+					       nil id))
 			 (("statuses")
 			  (twittering-get-timeline twittering-last-used-method
 						   nil id))
@@ -2265,6 +2368,7 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   "Generate status URL."
   (format "http://twitter.com/%s/statuses/%s" username id))
 
+
 (defun twittering-show-lists ()
   "show lists index"
   (interactive)
@@ -2286,7 +2390,6 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
     (if (not buf)
 	(twittering-stop)
       (twittering-http-method "GET" username "lists" noninteractive "" 'twittering-http-get-lists-sentinel))))
-
 
 
 (defun twittering-suspend ()
