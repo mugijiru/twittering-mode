@@ -152,7 +152,7 @@ tweets received when this hook is run.")
 
 (defvar twittering-lists-format nil)
 (setq twittering-lists-format 
-      "%f [member: %m][follower: %s]%x")
+      "%i %f [member: %m][follower: %s]")
 
 
 (defvar twittering-buffer "*twittering*")
@@ -350,8 +350,9 @@ directory. You should change through function'twittering-icon-mode'")
       (define-key km "\C-c\C-m" 'twittering-retweet)
       (define-key km "\C-m" 'twittering-enter)
 ;      (define-key km "\C-c\C-l" 'twittering-update-lambda)
-      (define-key km "\C-c\C-l" 'twittering-show-lists)
-      (define-key km "\C-cl" 'twittering-show-other-user-lists)
+      (define-key km "\C-c\C-l" 'twittering-show-own-lists)
+      (define-key km "L" 'twittering-show-other-user-own-lists)
+      (define-key km "\C-cl" 'twittering-show-other-user-own-lists-interactive)
       (define-key km [mouse-1] 'twittering-click)
       (define-key km "\C-c\C-v" 'twittering-view-user-page)
       (define-key km "\C-c\C-z" 'twittering-update-footer)
@@ -390,7 +391,6 @@ directory. You should change through function'twittering-icon-mode'")
       (define-key km [backspace] 'backward-char)
       (define-key km "g" 'beginning-of-buffer)
       (define-key km "G" 'end-of-buffer)
-      (define-key km "H" 'beginning-of-buffer)
       (define-key km "/" 'isearch-forward)
       (define-key km "i" 'twittering-icon-mode)
       (define-key km "s" 'twittering-scroll-mode)
@@ -1249,6 +1249,9 @@ PARAMETERS is alist of URI parameters.
 	(case c
 	  ((?s)                         ; %s - subscriber-count
 	   (list-push (attr 'subscriber-count) result))
+	  ((?i)                         ; %i - profile_image
+	   (list-push (twittering-profile-image 
+		       (attr 'user-profile-image-url) (attr 'user-id)) result))
 	  ((?m)                         ; %m - member-count
 	   (list-push (attr 'member-count) result))
 	  ((?f)                         ; %f - full-name
@@ -2369,15 +2372,23 @@ If STATUS-DATUM is already in DATA-VAR, return nil. If not, return t."
   (format "http://twitter.com/%s/statuses/%s" username id))
 
 
-(defun twittering-show-lists ()
+(defun twittering-show-own-lists ()
   "show lists index"
   (interactive)
   (twittering-get-lists twittering-username))
 
-(defun twittering-show-other-user-lists ()
+(defun twittering-show-other-user-own-lists ()
   "show other user's lists index"
   (interactive)
   (let ((username (get-text-property (point) 'username)))
+    (if (> (length username) 0)
+	(twittering-get-lists username)
+      (message "No user selected"))))
+
+(defun twittering-show-other-user-own-lists-interactive ()
+  "show other user's lists index"
+  (interactive)
+  (let ((username (read-from-minibuffer "user: " (get-text-property (point) 'username))))
     (if (> (length username) 0)
 	(twittering-get-lists username)
       (message "No user selected"))))
